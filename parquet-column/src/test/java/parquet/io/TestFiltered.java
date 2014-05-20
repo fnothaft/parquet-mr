@@ -22,8 +22,10 @@ import static parquet.example.Paper.schema;
 import static parquet.filter.AndRecordFilter.and;
 import static parquet.filter.ColumnPredicates.applyFunctionToLong;
 import static parquet.filter.ColumnPredicates.applyFunctionToString;
+import static parquet.filter.ColumnPredicates.applyFunctionToColumns;
 import static parquet.filter.ColumnPredicates.equalTo;
 import static parquet.filter.ColumnRecordFilter.column;
+import static parquet.filter.MultiColumnRecordFilter.columns;
 import static parquet.filter.NotRecordFilter.not;
 import static parquet.filter.OrRecordFilter.or;
 import static parquet.filter.PagedRecordFilter.page;
@@ -39,9 +41,12 @@ import parquet.column.page.mem.MemPageStore;
 import parquet.example.data.Group;
 import parquet.example.data.GroupWriter;
 import parquet.example.data.simple.convert.GroupRecordConverter;
+import parquet.filter.MultiTypeContainer;
+import parquet.filter.ColumnPredicates.MultiColumnPredicateFunction;
 import parquet.filter.ColumnPredicates.LongPredicateFunction;
 import parquet.filter.ColumnPredicates.PredicateFunction;
 import parquet.io.api.RecordMaterializer;
+import parquet.schema.PrimitiveType.PrimitiveTypeName;
 
 public class TestFiltered {
 
@@ -61,6 +66,21 @@ public class TestFiltered {
     }
   };
 
+  /* Class that implements multi type predicate. Checks for ID < 15L, and string ending in 'A' */
+  public class MultiFunctionPredicate implements MultiColumnPredicateFunction {
+    final PrimitiveTypeName[] types = {PrimitiveTypeName.INT64, PrimitiveTypeName.BINARY};
+
+    @Override
+    public PrimitiveTypeName[] getTypes() {
+      return types;
+    }
+
+    @Override
+    public boolean functionToApply(MultiTypeContainer input) {
+      return (input.getLong(0) < 15 && input.getString(1).endsWith("A"));
+    }
+  }
+    
   private List<Group> readAll(RecordReader<Group> reader) {
     List<Group> result = new ArrayList<Group>();
     Group g;
@@ -96,6 +116,21 @@ public class TestFiltered {
 
     readOne(recordReader, "r1 filtered out", r2);
 
+  }
+
+  @Test
+  public void testApplyMultiFunctionFilter() {
+    MessageColumnIO columnIO =  new ColumnIOFactory(true).getColumnIO(schema);
+    MemPageStore memPageStore = writeTestRecords(columnIO, 1);
+
+    String[] c = {"DocId", "Name.Url"};
+
+    RecordMaterializer<Group> recordConverter = new GroupRecordConverter(schema);
+    RecordReaderImplementation<Group> recordReader = (RecordReaderImplementation<Group>)
+        columnIO.getRecordReader(memPageStore, recordConverter,
+                                 columns(c, applyFunctionToColumns(new MultiFunctionPredicate())));
+
+    readOne(recordReader, "r2 filtered out", r1);
   }
 
   @Test

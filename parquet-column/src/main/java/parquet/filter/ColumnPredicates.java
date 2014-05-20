@@ -17,6 +17,7 @@ package parquet.filter;
 
 import parquet.Preconditions;
 import parquet.column.ColumnReader;
+import parquet.schema.PrimitiveType.PrimitiveTypeName;
 import parquet.io.api.Binary;
 
 /**
@@ -181,6 +182,34 @@ public class ColumnPredicates {
       @Override
       public boolean apply(ColumnReader input) {
 	  return fn.functionToApply(input.getBinary());
+      }
+    };
+  }
+
+  /* provide the following for predicates that operate on multiple
+     columns of data */
+  public static interface MultiColumnPredicate {
+    PrimitiveTypeName[] getTypes();
+
+    boolean apply(ColumnReader[] inputs);
+  }
+
+  public static interface MultiColumnPredicateFunction {
+    PrimitiveTypeName[] getTypes();
+      
+    boolean functionToApply(MultiTypeContainer input);
+  }
+
+  public static MultiColumnPredicate applyFunctionToColumns(final MultiColumnPredicateFunction fn) {
+    return new MultiColumnPredicate() {
+      @Override
+      public boolean apply(ColumnReader[] inputs) {
+        return fn.functionToApply(MultiTypeContainer.load(inputs, fn.getTypes()));
+      }
+
+      @Override
+      public PrimitiveTypeName[] getTypes() {
+        return fn.getTypes();
       }
     };
   }
